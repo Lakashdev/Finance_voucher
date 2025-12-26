@@ -105,7 +105,7 @@ Route::middleware(['auth','verified'])->group(function () {
 
     Route::middleware(['auth', 'can:manage-accounts'])->group(function () {
     Route::resource('accounts', AccountController::class)->except(['show','create','edit']);
-});
+    });
 });
 
 Route::middleware(['auth'])->group(function () {

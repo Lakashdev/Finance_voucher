@@ -108,10 +108,34 @@ export default function AccountsIndex({ filters, accounts, types }) {
                   <td className="text-capitalize">{a.type}</td>
                   <td>{a.active ? 'Yes' : 'No'}</td>
                   <td>
-                    <a className="btn btn-sm btn-outline-primary" href={route('accounts.report', a.id)}>
-                        View Report
-                    </a>
-                    </td>
+                    <div className="btn-group btn-group-sm" role="group">
+                      <a
+                        href={route("accounts.report", a.id)}
+                        className="btn btn-outline-primary"
+                        title="View report"
+                      >
+                        <i className="bi bi-bar-chart" />
+                      </a>
+
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary"
+                        title="Edit"
+                        onClick={() => openEdit(a)}
+                      >
+                        <i className="bi bi-pencil" />
+                      </button>
+
+                     {/*  <button
+                        type="button"
+                        className="btn btn-outline-danger"
+                        title="Delete"
+                        onClick={() => onDelete(a)}
+                      >
+                        <i className="bi bi-trash" />
+                      </button> */}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>

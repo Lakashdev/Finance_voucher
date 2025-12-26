@@ -53,7 +53,7 @@ class AccountController extends Controller
         return back()->with('success', 'Account created.');
     }
 
-    /* public function update(Request $request, Account $account)
+    public function update(Request $request, Account $account)
     {
         $data = $request->validate([
             'code'   => ['required','string','max:50', Rule::unique('accounts','code')->ignore($account->id)],
@@ -67,7 +67,7 @@ class AccountController extends Controller
         return back()->with('success', 'Account updated.');
     }
 
-    public function destroy(Account $account)
+  /*   public function destroy(Account $account)
     {
         // prevent delete if referenced by entries
         if ($account->entries()->exists()) {
@@ -76,6 +76,6 @@ class AccountController extends Controller
 
         $account->delete();
         return back()->with('success', 'Account deleted.');
-    } */
+    }  */
    
 }
