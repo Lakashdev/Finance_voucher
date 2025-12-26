@@ -77,14 +77,14 @@ export default function AuthenticatedLayout({ header, children }) {
                 🧾 Ledger Book
             </Link>
 
-              {user?.role === 'accountant' && (
+              {/* {user?.role === 'accountant' && ( */}
                 <Link
                   href={route('vouchers.rejected')}
                   className={`list-group-item list-group-item-action ${isRoute('vouchers.rejected') ? 'active' : ''}`}
                 >
                   ❌ Rejected Vouchers
                 </Link>
-              )}
+             {/*  )} */}
 
               {user?.role === 'supervisor' && (
                 <>

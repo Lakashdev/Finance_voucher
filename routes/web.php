@@ -89,8 +89,8 @@ Route::middleware(['auth','verified'])->group(function () {
 
 
     Route::get('/vouchers/rejected', [JournalVoucherController::class, 'rejectedIndex'])
-    ->name('vouchers.rejected')
-    ->middleware(['auth', 'role:accountant']);
+    ->name('vouchers.rejected')/* 
+    ->middleware(['auth', 'role:accountant']) */;
         // EDIT + UPDATE (policy-enforced)
     Route::get('/vouchers/{voucher}/edit', [JournalVoucherController::class, 'edit'])
         ->whereNumber('voucher')->name('vouchers.edit')->can('update','voucher');

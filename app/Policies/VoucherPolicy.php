@@ -29,13 +29,19 @@ class VoucherPolicy
     /** Accountant can update only own voucher when draft/rejected */
     public function update(User $user, JournalVoucher $voucher): bool
     {
-        if ($user->role === 'accountant') return true;
+        /* if ($user->role === 'accountant') return true;
 
         return ($voucher->created_by === $user->id)
             && in_array($voucher->status, [
                 JournalVoucher::S_DRAFT,
                 JournalVoucher::S_REJECTED,
-            ], true);
+            ], true); */
+        return in_array($user->role, ['accountant', 'supervisor'], true)
+        && $voucher->created_by === $user->id
+        && in_array($voucher->status, [
+            JournalVoucher::S_DRAFT,
+            JournalVoucher::S_REJECTED,
+        ], true);
     }
 
     /** Accountant can submit only own voucher when draft/rejected */
