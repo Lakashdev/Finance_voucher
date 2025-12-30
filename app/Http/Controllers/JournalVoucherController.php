@@ -63,11 +63,11 @@ class JournalVoucherController extends Controller
             'lines.*.lf'         => ['nullable','string','max:50'],
 
             // Allocations (explicit, required)
-            'allocations'                    => ['required','array','min:1'],
-            'allocations.*.debit_index'      => ['required','integer','min:0'],
-            'allocations.*.credit_index'     => ['required','integer','min:0'],
-            'allocations.*.amount'           => ['required','numeric','min:0.01'],
-        ];
+        /*             'allocations' => ['nullable','array'],
+            'allocations.*.debit_index'  => ['required_with:allocations.*','integer','min:0'],
+            'allocations.*.credit_index' => ['required_with:allocations.*','integer','min:0'],
+            'allocations.*.amount'       => ['required_with:allocations.*','numeric','min:0.01'], */
+                    ];
 
         $messages = [
             'lines.min'                   => 'Add at least two lines.',
@@ -76,7 +76,7 @@ class JournalVoucherController extends Controller
             'lines.*.side.in'             => 'Side must be Debit or Credit.',
             'lines.*.amount.min'          => 'Amount must be greater than zero.',
             'lines.*.amount.numeric'      => 'Amount must be a number.',
-            'allocations.required'        => 'Please allocate each debit against one or more credit lines.',
+            /* 'allocations.required'        => 'Please allocate each debit against one or more credit lines.', */
         ];
 
         $data = $r->validate($rules, $messages);
@@ -109,73 +109,87 @@ class JournalVoucherController extends Controller
         }
 
         // 5) Validate allocations against provided lines (no FIFO)
-        $allocs = collect($data['allocations'] ?? []);
-        $n = $lines->count();
+        $allocs = collect($data['allocations'] ?? [])
+                    ->filter(fn ($a) => isset($a['amount']) && (float)$a['amount'] > 0)
+                    ->values();
 
-        // a) index bounds, correct sides, no self, no duplicate pairs
-        $pairSeen = [];
-        foreach ($allocs as $i => $a) {
-            $di = (int)$a['debit_index'];
-            $ci = (int)$a['credit_index'];
+            $hasAllocs = $allocs->isNotEmpty();
 
-            if ($di < 0 || $di >= $n || $ci < 0 || $ci >= $n) {
-                return back()->withErrors([
-                    'allocations' => "Allocation row #".($i+1).": invalid line index."
-                ])->withInput();
-            }
-            if (($lines[$di]['side'] ?? null) !== 'dr') {
-                return back()->withErrors([
-                    'allocations' => "Allocation row #".($i+1).": debit_index is not a Debit line."
-                ])->withInput();
-            }
-            if (($lines[$ci]['side'] ?? null) !== 'cr') {
-                return back()->withErrors([
-                    'allocations' => "Allocation row #".($i+1).": credit_index is not a Credit line."
-                ])->withInput();
-            }
-            if ($di === $ci) {
-                return back()->withErrors([
-                    'allocations' => "Allocation row #".($i+1).": cannot allocate a line to itself."
-                ])->withInput();
-            }
-            $key = $di.'|'.$ci;
-            if (isset($pairSeen[$key])) {
-                return back()->withErrors([
-                    'allocations' => "Allocation row #".($i+1).": duplicate pair of the same debit & credit lines."
-                ])->withInput();
-            }
-            $pairSeen[$key] = true;
-        }
+            if ($hasAllocs) {
+            $n = $lines->count();
 
-        // b) Sums for each debit & credit must equal line amounts (no under/over allocation)
-        $sumByDebitIdx  = [];
-        $sumByCreditIdx = [];
-        foreach ($allocs as $a) {
-            $sumByDebitIdx[(int)$a['debit_index']]   = ($sumByDebitIdx[(int)$a['debit_index']]   ?? 0) + (float)$a['amount'];
-            $sumByCreditIdx[(int)$a['credit_index']] = ($sumByCreditIdx[(int)$a['credit_index']] ?? 0) + (float)$a['amount'];
-        }
-        foreach ($lines as $idx => $l) {
-            if ($l['side'] === 'dr') {
-                $want = round($l['debit'], 2);
-                $got  = round($sumByDebitIdx[$idx] ?? 0, 2);
-                if ($want !== $got) {
+            // a) index bounds, correct sides, no self, no duplicate pairs
+            $pairSeen = [];
+            foreach ($allocs as $i => $a) {
+                $di = (int) $a['debit_index'];
+                $ci = (int) $a['credit_index'];
+
+                if ($di < 0 || $di >= $n || $ci < 0 || $ci >= $n) {
                     return back()->withErrors([
-                        'allocations' => "Debit line #".($idx+1)." must be fully allocated (expected {$want}, got {$got})."
+                        'allocations' => "Allocation row #".($i+1).": invalid line index."
                     ])->withInput();
                 }
-            } else { // credit
-                $want = round($l['credit'], 2);
-                $got  = round($sumByCreditIdx[$idx] ?? 0, 2);
-                if ($want !== $got) {
+
+                if (($lines[$di]['side'] ?? null) !== 'dr') {
                     return back()->withErrors([
-                        'allocations' => "Credit line #".($idx+1)." must be fully allocated (expected {$want}, got {$got})."
+                        'allocations' => "Allocation row #".($i+1).": debit_index is not a Debit line."
                     ])->withInput();
+                }
+
+                if (($lines[$ci]['side'] ?? null) !== 'cr') {
+                    return back()->withErrors([
+                        'allocations' => "Allocation row #".($i+1).": credit_index is not a Credit line."
+                    ])->withInput();
+                }
+
+                if ($di === $ci) {
+                    return back()->withErrors([
+                        'allocations' => "Allocation row #".($i+1).": cannot allocate a line to itself."
+                    ])->withInput();
+                }
+
+                $key = $di.'|'.$ci;
+                if (isset($pairSeen[$key])) {
+                    return back()->withErrors([
+                        'allocations' => "Allocation row #".($i+1).": duplicate pair of the same debit & credit lines."
+                    ])->withInput();
+                }
+                $pairSeen[$key] = true;
+            }
+
+            // b) prevent OVER-allocation (under-allocation is allowed)
+            $sumByDebitIdx  = [];
+            $sumByCreditIdx = [];
+
+            foreach ($allocs as $a) {
+                $sumByDebitIdx[(int)$a['debit_index']]   = ($sumByDebitIdx[(int)$a['debit_index']]   ?? 0) + (float)$a['amount'];
+                $sumByCreditIdx[(int)$a['credit_index']] = ($sumByCreditIdx[(int)$a['credit_index']] ?? 0) + (float)$a['amount'];
+            }
+
+            foreach ($lines as $idx => $l) {
+                if ($l['side'] === 'dr') {
+                    $want = round($l['debit'], 2);
+                    $got  = round($sumByDebitIdx[$idx] ?? 0, 2);
+                    if ($got > $want) {
+                        return back()->withErrors([
+                            'allocations' => "Debit line #".($idx+1)." is over-allocated (max {$want}, got {$got})."
+                        ])->withInput();
+                    }
+                }
+
+                if ($l['side'] === 'cr') {
+                    $want = round($l['credit'], 2);
+                    $got  = round($sumByCreditIdx[$idx] ?? 0, 2);
+                    if ($got > $want) {
+                        return back()->withErrors([
+                            'allocations' => "Credit line #".($idx+1)." is over-allocated (max {$want}, got {$got})."
+                        ])->withInput();
+                    }
                 }
             }
         }
-
         // 6) Create voucher + entries + allocations (atomically)
-        $voucher = DB::transaction(function () use ($data, $lines, $allocs) {
+        $voucher = DB::transaction(function () use ($data, $lines, $allocs,$hasAllocs) {
 
             $jv = JournalVoucher::create([
                 'jv_number'        => $this->nextJvNo(),
@@ -204,17 +218,19 @@ class JournalVoucherController extends Controller
             }
 
             // write explicit allocations (required)
-            foreach ($allocs as $a) {
-                $d = $created[(int)$a['debit_index']];
-                $c = $created[(int)$a['credit_index']];
+            if ($hasAllocs) {
+                foreach ($allocs as $a) {
+                    $d = $created[(int)$a['debit_index']];
+                    $c = $created[(int)$a['credit_index']];
 
-                VoucherEntryAllocation::create([
-                    'journal_voucher_id' => $jv->id,          // 👈 REQUIRED by your schema
-                    'jv_number'          => $jv->jv_number,   // 👈 if you added this column too
-                    'debit_entry_id'     => $d->id,
-                    'credit_entry_id'    => $c->id,
-                    'amount'             => (float)$a['amount'],
-                ]);
+                    VoucherEntryAllocation::create([
+                        'journal_voucher_id' => $jv->id,
+                        'jv_number'          => $jv->jv_number,   // keep if your column exists
+                        'debit_entry_id'     => $d->id,
+                        'credit_entry_id'    => $c->id,
+                        'amount'             => (float)$a['amount'],
+                    ]);
+                }
             }
 
             return $jv;

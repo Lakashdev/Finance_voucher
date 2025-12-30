@@ -86,7 +86,7 @@ export default function AuthenticatedLayout({ header, children }) {
                 </Link>
              {/*  )} */}
 
-              {user?.role === 'supervisor' && (
+                {user?.role === 'supervisor' && (
                 <>
                   <Link
                     href={route('vouchers.approve')}

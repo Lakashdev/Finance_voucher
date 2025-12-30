@@ -67,16 +67,24 @@ export default function Create({ accounts = [], today, enteredBy }) {
   }, [data.lines]);
 
   // Build debit list and current remaining (debit - allocated credits)
-  const debitInfo = useMemo(() => {
-    // collect debits
-    const debits = data.lines
-      .map((l, i) => ({ ...l, index: i }))
-      .filter(l => l.side === 'dr');
+const debitInfo = useMemo(() => {
+  // collect debits
+  const debits = data.lines
+    .map((l, i) => ({ ...l, index: i }))
+    .filter(l => l.side === 'dr');
 
-    // remaining starts as debit amount
-    const remaining = debits.map(d => parseFloat(d.amount || 0));
+  // Detect if user is using allocation at all (any credit has alloc_to selected)
+  const hasAnyAllocation = data.lines.some(
+    (l) => l.side === 'cr' && l.alloc_to !== '' && l.alloc_to !== null && l.alloc_to !== undefined
+  );
 
-    // subtract each allocated credit
+  // remaining:
+  // - if allocations are NOT being used, don't show "full amount remaining" (show 0)
+  // - if allocations are used, start with debit amount and subtract allocated credits
+  const remaining = debits.map(d => (hasAnyAllocation ? parseFloat(d.amount || 0) : 0));
+
+  // subtract each allocated credit (only when allocations are being used)
+  if (hasAnyAllocation) {
     data.lines.forEach((l, ci) => {
       if (l.side !== 'cr') return;
       const amt = parseFloat(l.amount || 0);
@@ -86,26 +94,29 @@ export default function Create({ accounts = [], today, enteredBy }) {
         remaining[di] = Math.max(0, (remaining[di] || 0) - amt);
       }
     });
+  }
 
-    // convenience labels for dropdown
-    const debitOptions = debits.map((d, k) => {
-      const acc = accountMap[String(d.account_id || '')];
-      const labelName = acc ? `${acc.name} (${acc.code})` : `Line ${d.index + 1}`;
-      return {
-        value: String(k), // k is position in 'debits' array
-        label: `${k + 1}. ${labelName} — remaining ${Number(remaining[k] || 0).toFixed(2)}`,
-      };
-    });
+  // convenience labels for dropdown (keep same label format, but remaining will be 0 when no allocation used)
+  const debitOptions = debits.map((d, k) => {
+    const acc = accountMap[String(d.account_id || '')];
+    const labelName = acc ? `${acc.name} (${acc.code})` : `Line ${d.index + 1}`;
+    return {
+      value: String(k), // k is position in 'debits' array
+      label: `${k + 1}. ${labelName} — remaining ${Number(remaining[k] || 0).toFixed(2)}`,
+    };
+  });
 
-    // map from global line index -> debit array index (k)
-    const globalToDebitIdx = {};
-    debits.forEach((d, k) => { globalToDebitIdx[d.index] = k; });
+  // map from global line index -> debit array index (k)
+  const globalToDebitIdx = {};
+  debits.forEach((d, k) => { globalToDebitIdx[d.index] = k; });
 
-    const allDebitsFullyAllocated = remaining.every(r => Math.abs(Number(r || 0)) < 0.005);
+  // If allocations are not being used, treat as "fully allocated" so it doesn't act like a blocker anywhere
+  const allDebitsFullyAllocated = hasAnyAllocation
+    ? remaining.every(r => Math.abs(Number(r || 0)) < 0.005)
+    : true;
 
-    return { debits, remaining, debitOptions, globalToDebitIdx, allDebitsFullyAllocated };
-  }, [data.lines, accountMap]);
-
+  return { debits, remaining, debitOptions, globalToDebitIdx, allDebitsFullyAllocated };
+}, [data.lines, accountMap]);
   // Every credit must have an allocation
   const allCreditsAllocated = useMemo(() => {
     return data.lines
@@ -135,39 +146,50 @@ export default function Create({ accounts = [], today, enteredBy }) {
   }, [data.lines]);
 
   // Build allocations payload for backend
-  const buildAllocations = () => {
-    // Build table of debit lines (their positions among all lines)
-    const debits = data.lines
-      .map((l, i) => ({ ...l, index: i }))
-      .filter(l => l.side === 'dr');
+const buildAllocations = () => {
+  const debits = data.lines
+    .map((l, i) => ({ ...l, index: i }))
+    .filter(l => l.side === 'dr');
 
-    const allocations = [];
-    data.lines.forEach((l, ci) => {
-      if (l.side !== 'cr') return;
-      const di = Number(l.alloc_to);
-      const amt = parseFloat(l.amount || 0);
-      if (Number.isFinite(di) && debits[di] && amt > 0) {
-        allocations.push({
-          debit_index: debits[di].index,  // global line index for the debit
-          credit_index: ci,               // global line index for this credit
-          amount: amt,
-        });
-      }
-    });
-    return allocations;
-  };
+  const allocations = [];
+
+  data.lines.forEach((l, ci) => {
+    if (l.side !== 'cr') return;
+
+    // IMPORTANT: treat empty alloc_to as "no allocation"
+    if (l.alloc_to === '' || l.alloc_to === null || l.alloc_to === undefined) return;
+
+    const di = Number(l.alloc_to);
+    const amt = parseFloat(l.amount || 0);
+
+    if (Number.isFinite(di) && debits[di] && amt > 0) {
+      allocations.push({
+        debit_index: debits[di].index, // global debit line index
+        credit_index: ci,              // global credit line index
+        amount: amt,
+      });
+    }
+  });
+
+  return allocations;
+};
 
   // Submit with allocations included
   const submit = (e) => {
     e.preventDefault();
-    const allocations = buildAllocations();
-    router.post(
-      route('vouchers.store'),
-      { ...data, allocations },
-      { preserveScroll: true }
-    );
-  };
 
+    const allocations = buildAllocations();
+
+    // IMPORTANT: transform is not chainable in inertia react
+    form.transform((payload) => ({
+      ...payload,
+      ...(allocations.length ? { allocations } : {}), // only send if exists
+    }));
+
+    form.post(route('vouchers.store'), {
+      preserveScroll: true,
+    });
+  };
   const getAccountById = (id) => accountMap[String(id || '')];
 
   return (
@@ -182,7 +204,7 @@ export default function Create({ accounts = [], today, enteredBy }) {
           Duplicate <strong>debit</strong> accounts are not allowed in one voucher.
         </div>
       )}
-      {!allCreditsAllocated && (
+      {/* {!allCreditsAllocated && (
         <div className="alert alert-danger">
           Please allocate each <strong>credit</strong> line to a <strong>debit</strong>.
         </div>
@@ -191,7 +213,7 @@ export default function Create({ accounts = [], today, enteredBy }) {
         <div className="alert alert-danger">
           All <strong>debit</strong> lines must be fully allocated.
         </div>
-      )}
+      )} */}
       {hasOverAllocation && (
         <div className="alert alert-danger">
           Allocation exceeds one or more debit amounts. Adjust allocations.
@@ -410,9 +432,9 @@ export default function Create({ accounts = [], today, enteredBy }) {
               Number(totals.diff) !== 0 ||
               data.lines.length < 2 ||
               hasDuplicateDebitAccounts ||
-              !allCreditsAllocated ||
-              !debitInfo.allDebitsFullyAllocated ||
-              hasOverAllocation
+            /*   !allCreditsAllocated ||
+              !debitInfo.allDebitsFullyAllocated || */
+              hasOverAllocation 
             }
           >
             Save Voucher
@@ -423,8 +445,8 @@ export default function Create({ accounts = [], today, enteredBy }) {
           </Link>
 
           <span className="text-muted small ms-2">
-            Must have at least 2 entries, debit accounts must be unique, every credit must be allocated,
-            all debits must be fully allocated, and totals must match.
+            Must have at least 2 entries, debit accounts must be unique, totals must match.
+Allocation is optional (but cannot exceed debit amounts).
           </span>
         </div>
       </form>
