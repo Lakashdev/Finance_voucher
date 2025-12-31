@@ -96,6 +96,13 @@ export default function AuthenticatedLayout({ header, children }) {
                   </Link>
 
                   <Link
+                    href={route('trial-balance.index')}
+                      className={`list-group-item list-group-item-action ${route().current('accounts.index') ? 'active' : ''}`}
+                  >
+                    📚 TrialBalance
+                  </Link>
+
+                  <Link
                     href={route('users.index')}
                     className={`list-group-item list-group-item-action ${isRoute('users.index') ? 'active' : ''}`}
                   >
@@ -115,7 +122,7 @@ export default function AuthenticatedLayout({ header, children }) {
                     📚 Acount Header
                     </Link>
                     <Link>
-
+                      
                     </Link>
                 </>
               )}

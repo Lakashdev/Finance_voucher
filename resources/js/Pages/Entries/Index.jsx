@@ -95,10 +95,10 @@ const exportUrl = route('entries.export', {
               <label className="form-label">Status</label>
               <select className="form-select" value={status} onChange={(e)=>setStatus(e.target.value)}>
                 <option value="">All</option>
-                <option value="draft">Draft</option>
+                
                 <option value="submitted">Submitted</option>
                 <option value="approved">Approved</option>
-                <option value="rejected">Rejected</option>
+                
               </select>
             </div>
             <div className="col-md-2">

@@ -8,6 +8,8 @@ use App\Models\JournalVoucher;
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\VoucherEntryController;
 use App\Http\Controllers\Reports\AccountReportController;
+use App\Http\Controllers\TrialBalanceController;
+
 Route::get('/', function () {
     return auth()->check() ? redirect()->route('dashboard') : redirect()->route('login');
 });
@@ -106,6 +108,13 @@ Route::middleware(['auth','verified'])->group(function () {
     Route::middleware(['auth', 'can:manage-accounts'])->group(function () {
     Route::resource('accounts', AccountController::class)->except(['show','create','edit']);
     });
+
+   Route::get('/trial-balance', [TrialBalanceController::class, 'index'])
+    ->name('trial-balance.index');
+
+Route::get('/trial-balance/export', [TrialBalanceController::class, 'export'])
+    ->name('trial-balance.export');
+
 });
 
 Route::middleware(['auth'])->group(function () {
